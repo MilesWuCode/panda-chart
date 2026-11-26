@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>my cat 血糖線圖</title>
+    <title>Panda Chart 血糖線圖</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
       body {
@@ -58,12 +58,14 @@
   </head>
   <body>
     <header>
-      <h1>my cat 血糖線圖</h1>
+      <h1>Panda Chart 血糖線圖</h1>
       <select id="file-select"></select>
       <span id="info"></span>
       <span class="legend">
-        <span class="swatch" style="background: rgb(255, 140, 0)"></span>白天 06–18
-        <span class="swatch" style="background: rgb(25, 50, 120)"></span>夜間 18–06
+        <span class="swatch" style="background: rgb(255, 140, 0)"></span>白天
+        06–18
+        <span class="swatch" style="background: rgb(25, 50, 120)"></span>夜間
+        18–06
       </span>
     </header>
     <div class="chart-box"><canvas id="chart"></canvas></div>
@@ -104,7 +106,9 @@
       function draw(records) {
         const labels = records.map((r) => fmt(r.date));
         const values = records.map((r) => r.value);
-        const avg = Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+        const avg = Math.round(
+          values.reduce((s, v) => s + v, 0) / values.length,
+        );
 
         // 白天 06:00–17:59 橘色，夜間 18:00–05:59 深藍（本地時間）
         const colorAt = (i) => {
@@ -189,7 +193,8 @@
         try {
           const files = await (await fetch("./data/files.json")).json();
           if (!files.length) {
-            info.textContent = "./data 裡沒有 csv 檔，請先在 my-cat 執行 bun run export";
+            info.textContent =
+              "./data 裡沒有 csv 檔，請先在 my-cat 執行 bun run export";
             return;
           }
           select.innerHTML = files
