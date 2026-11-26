@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>my cat 血糖線圖</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, "PingFang TC", sans-serif;
+        margin: 0;
+        padding: 16px;
+        background: #fafafa;
+        color: #222;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      select {
+        font-size: 15px;
+        padding: 6px 8px;
+      }
+      #info {
+        color: #666;
+        font-size: 13px;
+      }
+      .legend {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: #444;
+      }
+      .swatch {
+        display: inline-block;
+        width: 14px;
+        height: 4px;
+        border-radius: 2px;
+        margin-left: 6px;
+      }
+      .chart-box {
+        position: relative;
+        height: 70vh;
+        background: #fff;
+        border-radius: 8px;
+        padding: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>my cat 血糖線圖</h1>
+      <select id="file-select"></select>
+      <span id="info"></span>
+      <span class="legend">
+        <span class="swatch" style="background: rgb(255, 140, 0)"></span>白天 06–18
+        <span class="swatch" style="background: rgb(25, 50, 120)"></span>夜間 18–06
+      </span>
+    </header>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+
+    <script>
+      const select = document.getElementById("file-select");
+      const info = document.getElementById("info");
+      let chart;
+      const DAY_COLOR = "rgb(255, 140, 0)";
+      const NIGHT_COLOR = "rgb(25, 50, 120)";
+
+      // CSV: date,value,isHigh,isLow,trend
+      function parseCsv(text) {
+        const [header, ...rows] = text.trim().split(/\r?\n/);
+        const keys = header.split(",");
+        return rows.map((row) => {
+          const cols = row.split(",");
+          const obj = Object.fromEntries(keys.map((k, i) => [k, cols[i]]));
+          return {
+            date: new Date(obj.date),
+            value: Number(obj.value),
+            isHigh: obj.isHigh === "true",
+            isLow: obj.isLow === "true",
+            trend: obj.trend,
+          };
+        });
+      }
+
+      const fmt = (d) =>
+        d.toLocaleString("zh-TW", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+
+      function draw(records) {
+        const labels = records.map((r) => fmt(r.date));
+        const values = records.map((r) => r.value);
+        const avg = Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+
+        // 白天 06:00–17:59 橘色，夜間 18:00–05:59 深藍（本地時間）
+        const colorAt = (i) => {
+          const h = records[i].date.getHours();
+          return h >= 6 && h < 18 ? DAY_COLOR : NIGHT_COLOR;
+        };
+        const pointColors = records.map((_, i) => colorAt(i));
+
+        // Chart.js Line Chart — Interpolation Modes
+        const data = {
+          labels,
+          datasets: [
+            {
+              label: "血糖 (mg/dL)",
+              data: values,
+              borderColor: DAY_COLOR,
+              pointBackgroundColor: pointColors,
+              pointBorderColor: pointColors,
+              // 每段線依起點時間上色
+              segment: { borderColor: (ctx) => colorAt(ctx.p0DataIndex) },
+              fill: false,
+              cubicInterpolationMode: "monotone",
+              tension: 0.4,
+            },
+            {
+              label: "平均",
+              data: values.map(() => avg),
+              borderColor: "rgb(150, 150, 150)",
+              borderDash: [6, 6],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              pointHoverRadius: 0,
+              fill: false,
+            },
+          ],
+        };
+
+        chart?.destroy();
+        chart = new Chart(document.getElementById("chart"), {
+          type: "line",
+          data,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  afterBody: (items) => {
+                    const r = records[items[0].dataIndex];
+                    return `trend: ${r.trend}${r.isHigh ? "（偏高）" : ""}${r.isLow ? "（偏低）" : ""}`;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: { display: true, title: { display: true, text: "時間" } },
+              y: {
+                display: true,
+                min: 0,
+                suggestedMax: 600, // 至少到 600，有更高的讀數時自動往上延伸
+                ticks: { stepSize: 50 },
+                title: { display: true, text: "血糖 (mg/dL)" },
+              },
+            },
+          },
+        });
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        info.textContent = `${records.length} 筆 · 平均 ${avg} · 最低 ${min} · 最高 ${max}`;
+      }
+
+      async function loadFile(name) {
+        const res = await fetch(`./data/${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error(`讀取 ${name} 失敗 (${res.status})`);
+        draw(parseCsv(await res.text()));
+      }
+
+      async function init() {
+        try {
+          const files = await (await fetch("./data/files.json")).json();
+          if (!files.length) {
+            info.textContent = "./data 裡沒有 csv 檔，請先在 my-cat 執行 bun run export";
+            return;
+          }
+          select.innerHTML = files
+            .map((f) => `<option value="${f}">${f}</option>`)
+            .join("");
+          select.addEventListener("change", () =>
+            loadFile(select.value).catch((e) => (info.textContent = e.message)),
+          );
+          await loadFile(files[0]);
+        } catch (e) {
+          info.textContent = `無法取得檔案清單，請用網頁伺服器開啟（不能直接雙擊）（${e.message}）`;
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>
